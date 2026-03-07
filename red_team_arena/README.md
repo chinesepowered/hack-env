@@ -1,8 +1,8 @@
 ---
 title: Red Team Arena Environment Server
-emoji: shield
-colorFrom: '#00C9FF'
-colorTo: '#1B2845'
+emoji: 🛡
+colorFrom: blue
+colorTo: gray
 sdk: docker
 pinned: false
 app_port: 8000
