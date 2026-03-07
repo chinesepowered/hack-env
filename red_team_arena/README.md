@@ -1,3 +1,16 @@
+---
+title: Red Team Arena Environment Server
+emoji: shield
+colorFrom: '#00C9FF'
+colorTo: '#1B2845'
+sdk: docker
+pinned: false
+app_port: 8000
+base_path: /web
+tags:
+  - openenv
+---
+
 # Red Team Arena
 
 **RL Environment for Adversarial Robustness Training with Adaptive Curricula & Policy Drift**
