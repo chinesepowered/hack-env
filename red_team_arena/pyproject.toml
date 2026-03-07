@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "red-team-arena"
+version = "0.1.0"
+description = "RL environment for adversarial robustness training with adaptive curricula and policy drift"
+requires-python = ">=3.10"
+dependencies = [
+    "openenv-core[core]>=0.2.1",
+    "fastapi>=0.115.0",
+    "pydantic>=2.0.0",
+    "uvicorn>=0.24.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]
+training = [
+    "trl>=0.29.0",
+    "transformers>=4.45.0",
+    "datasets>=3.0.0",
+    "unsloth",
+]
+
+[project.scripts]
+server = "red_team_arena.server.app:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = ["red_team_arena", "red_team_arena.server"]
+package-dir = { "red_team_arena" = ".", "red_team_arena.server" = "server" }
