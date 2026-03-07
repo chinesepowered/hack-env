@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+import logging
 import os
 
 from openenv.core.env_server.http_server import create_app
@@ -9,9 +11,14 @@ from openenv.core.env_server.http_server import create_app
 try:
     from red_team_arena.models import RedTeamAction, RedTeamObservation
     from red_team_arena.server.environment import RedTeamArenaEnvironment
+    from red_team_arena.server.gradio_ui import build_red_team_gradio_app
 except ImportError:
     from models import RedTeamAction, RedTeamObservation
     from server.environment import RedTeamArenaEnvironment
+    try:
+        from server.gradio_ui import build_red_team_gradio_app
+    except ImportError:
+        build_red_team_gradio_app = None
 
 
 # Configuration via environment variables
@@ -31,12 +38,30 @@ def create_red_team_environment():
     )
 
 
-app = create_app(
-    create_red_team_environment,
-    RedTeamAction,
-    RedTeamObservation,
-    env_name="red_team_arena",
-)
+# Create the FastAPI app with optional Gradio UI
+_logger = logging.getLogger(__name__)
+_sig = inspect.signature(create_app)
+
+if build_red_team_gradio_app is not None and "gradio_builder" in _sig.parameters:
+    app = create_app(
+        create_red_team_environment,
+        RedTeamAction,
+        RedTeamObservation,
+        env_name="red_team_arena",
+        gradio_builder=build_red_team_gradio_app,
+    )
+else:
+    if build_red_team_gradio_app is not None and "gradio_builder" not in _sig.parameters:
+        _logger.warning(
+            "Installed openenv-core does not support gradio_builder; "
+            "Gradio UI will not be available."
+        )
+    app = create_app(
+        create_red_team_environment,
+        RedTeamAction,
+        RedTeamObservation,
+        env_name="red_team_arena",
+    )
 
 
 def main():

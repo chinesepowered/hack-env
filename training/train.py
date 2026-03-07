@@ -1,8 +1,7 @@
-"""Red Team Arena training script.
+"""Red Team Arena — H100 Training Script (Northflank).
 
-Uses TRL GRPOTrainer with a custom rollout_func that interacts with the
-Red Team Arena environment. Designed for Qwen3.5-9B on H100 (Northflank)
-but also works with smaller models on consumer GPUs.
+Uses Unsloth for efficient LoRA fine-tuning + TRL GRPOTrainer for GRPO RL
+training on the Red Team Arena environment. Designed for Qwen3.5-9B on H100.
 
 Usage:
     # Start the environment server first:
@@ -13,7 +12,8 @@ Usage:
 
     # Server mode (2+ GPUs):
     CUDA_VISIBLE_DEVICES=0 trl vllm-serve --model Qwen/Qwen3.5-9B --port 8000
-    CUDA_VISIBLE_DEVICES=1 python train.py --model Qwen/Qwen3.5-9B --env-url http://localhost:8001 --vllm-mode server --vllm-url http://localhost:8000
+    CUDA_VISIBLE_DEVICES=1 python train.py --model Qwen/Qwen3.5-9B \\
+        --env-url http://localhost:8001 --vllm-mode server --vllm-url http://localhost:8000
 """
 
 from __future__ import annotations
@@ -25,9 +25,9 @@ import sys
 from typing import Dict, List
 
 from datasets import Dataset
-from transformers import AutoTokenizer
 from trl import GRPOConfig, GRPOTrainer
 from trl.experimental.openenv import generate_rollout_completions
+from unsloth import FastLanguageModel
 
 sys.path.insert(0, "..")
 from red_team_arena.client import RedTeamArenaEnv
@@ -99,7 +99,7 @@ def format_observation(obs) -> str:
     if obs.conversation_history:
         parts.append("")
         parts.append("Conversation history:")
-        for entry in obs.conversation_history[-3:]:  # Last 3 for context
+        for entry in obs.conversation_history[-3:]:
             calls = entry.get("agent_tool_calls", [])
             call_str = ", ".join(c["tool"] for c in calls) if calls else "none"
             parts.append(f"  Step {entry['step']} [{entry['channel']}] {entry['sender']}: tools={call_str}")
@@ -109,11 +109,9 @@ def format_observation(obs) -> str:
 
 def parse_tool_calls(text: str) -> RedTeamAction:
     """Parse LLM output into a RedTeamAction."""
-    # Try to extract JSON from the response
     reasoning = ""
     tool_calls = []
 
-    # Look for JSON block
     json_match = re.search(r'\{[\s\S]*\}', text)
     if json_match:
         try:
@@ -197,7 +195,7 @@ def make_rollout_func(env_url: str, max_steps: int = 10):
 
 
 # ---------------------------------------------------------------------------
-# Reward function (extracts env_reward from rollout kwargs)
+# Reward function
 # ---------------------------------------------------------------------------
 
 def reward_from_env(completions: List[str], **kwargs) -> List[float]:
@@ -211,7 +209,7 @@ def reward_from_env(completions: List[str], **kwargs) -> List[float]:
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Train on Red Team Arena")
+    parser = argparse.ArgumentParser(description="Train on Red Team Arena (H100)")
     parser.add_argument("--model", default="Qwen/Qwen3.5-9B", help="Model ID")
     parser.add_argument("--env-url", default="http://localhost:8001", help="Environment server URL")
     parser.add_argument("--vllm-mode", default="colocate", choices=["colocate", "server"])
@@ -220,18 +218,36 @@ def main():
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--num-generations", type=int, default=8)
     parser.add_argument("--max-completion-length", type=int, default=1024)
+    parser.add_argument("--max-seq-length", type=int, default=8192)
+    parser.add_argument("--lora-rank", type=int, default=32)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--output-dir", default="./output/red_team_arena")
     parser.add_argument("--dataset-size", type=int, default=256, help="Number of training prompts")
     args = parser.parse_args()
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
+    # Load model with Unsloth for efficient LoRA fine-tuning
+    print(f"Loading {args.model} with Unsloth...")
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=args.model,
+        max_seq_length=args.max_seq_length,
+        load_in_4bit=False,  # bf16 on H100 — full precision LoRA
+    )
 
-    # Dataset: each item is the system prompt (same for all, but could be varied)
-    dataset = Dataset.from_dict({
-        "prompt": [SYSTEM_PROMPT] * args.dataset_size,
-    })
+    # Apply LoRA adapters
+    model = FastLanguageModel.get_peft_model(
+        model,
+        r=args.lora_rank,
+        target_modules=[
+            "q_proj", "k_proj", "v_proj", "o_proj",
+            "gate_proj", "up_proj", "down_proj",
+        ],
+        lora_alpha=args.lora_rank,
+        lora_dropout=0,
+        bias="none",
+        use_gradient_checkpointing="unsloth",
+    )
 
+    dataset = Dataset.from_dict({"prompt": [SYSTEM_PROMPT] * args.dataset_size})
     rollout_func = make_rollout_func(args.env_url)
 
     grpo_config = GRPOConfig(
@@ -251,7 +267,7 @@ def main():
     )
 
     trainer = GRPOTrainer(
-        model=args.model,
+        model=model,
         processing_class=tokenizer,
         reward_funcs=reward_from_env,
         train_dataset=dataset,
@@ -259,9 +275,13 @@ def main():
         args=grpo_config,
     )
 
+    print("Starting GRPO training on Red Team Arena...")
     trainer.train()
-    trainer.save_model(args.output_dir + "/final")
-    print(f"Training complete. Model saved to {args.output_dir}/final")
+
+    # Save LoRA adapters
+    model.save_pretrained(args.output_dir + "/final")
+    tokenizer.save_pretrained(args.output_dir + "/final")
+    print(f"Training complete. LoRA adapters saved to {args.output_dir}/final")
 
 
 if __name__ == "__main__":
