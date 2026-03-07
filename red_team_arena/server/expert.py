@@ -111,7 +111,7 @@ def generate_episode_summary(
     ----------
     steps:
         List of per-step dicts, each containing at minimum:
-        - ``step``          (int)   – 1-based step number
+        - ``step``          (int)   - 1-based step number
         - ``content_item``  (ContentItem)
         - ``action``        (RedTeamAction)
         - ``reward``        (float)
@@ -158,7 +158,7 @@ def generate_episode_summary(
         lines.append("")
         lines.append(f"Step {step_num}  [{ci.channel}] from {ci.sender}")
         if ci.is_injection:
-            lines.append(f"  * Attack tier {ci.tier} — {ci.attack_type or 'unknown type'}")
+            lines.append(f"  * Attack tier {ci.tier} -- {ci.attack_type or 'unknown type'}")
         else:
             lines.append("  * Legitimate request")
 

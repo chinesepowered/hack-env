@@ -1,4 +1,4 @@
-"""Red Team Arena — RL Environment for Adversarial Robustness Training."""
+"""Red Team Arena -- RL Environment for Adversarial Robustness Training."""
 
 from red_team_arena.models import (
     RedTeamAction,

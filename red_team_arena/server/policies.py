@@ -25,7 +25,7 @@ CONTACT_VERIFICATION_LEVELS = {"auto_approve_known", "re_verify_inactive_7d", "a
 SKILL_INSTALLATION_LEVELS = {"auto_approve", "review_required", "admin_only", "blocked"}
 SANDBOX_MODES = {"none", "non_main", "full"}
 
-# Ordered tightness — higher index == stricter.
+# Ordered tightness -- higher index == stricter.
 _DATA_SHARING_ORDER: List[str] = [
     "external_allowed",
     "internal_only",
@@ -119,7 +119,7 @@ class SecurityPolicy(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Default policy — sane starting point modelled on OpenClaw defaults
+# Default policy -- sane starting point modelled on OpenClaw defaults
 # ---------------------------------------------------------------------------
 
 DEFAULT_POLICY = SecurityPolicy(
@@ -211,7 +211,7 @@ class PolicyDriftEngine:
         "tighten_sandbox": "Increase sandbox enforcement level",
         "restrict_credential_access": "Block read_file for credential paths",
         "require_approval_browse": "Require approval for browse_url",
-        "lockdown": "Full security lockdown — multiple permissions tightened",
+        "lockdown": "Full security lockdown -- multiple permissions tightened",
         "block_send_email": "Block outbound email entirely",
         "restrict_api_requests": "Block external API requests",
     }
@@ -285,7 +285,7 @@ class PolicyDriftEngine:
         old = self._policy.data_sharing
         self._policy.data_sharing = _tighten(old, _DATA_SHARING_ORDER)
         if self._policy.data_sharing == old:
-            # Already at maximum restriction — jump to blocked.
+            # Already at maximum restriction -- jump to blocked.
             self._policy.data_sharing = "blocked"
         return (
             f"Data sharing policy tightened from '{old}' to "
@@ -421,7 +421,7 @@ def is_tool_call_allowed(
 
     if perm == "requires_approval":
         # In a real system this would pause for user confirmation; in the
-        # training environment we treat it as "conditionally allowed" — the
+        # training environment we treat it as "conditionally allowed" -- the
         # agent should have flagged this for approval.
         pass  # allowed but noted
 

@@ -2,7 +2,7 @@
 
 **RL Environment for Adversarial Robustness Training with Adaptive Curricula & Policy Drift**
 
-An [OpenEnv](https://github.com/meta-pytorch/OpenEnv)-compatible environment that trains LLMs to resist adversarial attacks while operating as an AI assistant. The agent processes realistic multi-channel messages and must make safe tool calls while detecting prompt injections, malicious skill installations, and social engineering attacks — grounded in real-world incidents from [OpenClaw](https://github.com/openclaw/openclaw).
+An [OpenEnv](https://github.com/meta-pytorch/OpenEnv)-compatible environment that trains LLMs to resist adversarial attacks while operating as an AI assistant. The agent processes realistic multi-channel messages and must make safe tool calls while detecting prompt injections, malicious skill installations, and social engineering attacks -- grounded in real-world incidents from [OpenClaw](https://github.com/openclaw/openclaw).
 
 ## Quick Start
 
@@ -54,11 +54,11 @@ python training/train.py --model Qwen/Qwen3.5-4B --env-url http://localhost:8001
 
 ### The Problem
 
-OpenClaw — the most popular open-source AI agent (247k+ GitHub stars) — has 512 known vulnerabilities, 40,000+ exposed instances, and documented attacks including credential theft via prompt injection, malicious skill installations, and autonomous scope creep. There is no RL training environment for teaching agents to resist these attacks.
+OpenClaw -- the most popular open-source AI agent (247k+ GitHub stars) -- has 512 known vulnerabilities, 40,000+ exposed instances, and documented attacks including credential theft via prompt injection, malicious skill installations, and autonomous scope creep. There is no RL training environment for teaching agents to resist these attacks.
 
 ### The Environment
 
-Each episode is a **multi-step workflow** where the agent processes 4-6 messages across channels (Telegram, Slack, email, skill store). The agent responds by **making tool calls** — `send_message`, `read_file`, `run_command`, `install_skill`, etc.
+Each episode is a **multi-step workflow** where the agent processes 4-6 messages across channels (Telegram, Slack, email, skill store). The agent responds by **making tool calls** -- `send_message`, `read_file`, `run_command`, `install_skill`, etc.
 
 Some messages contain attacks that try to hijack the agent's tool calls. The agent must:
 - Complete legitimate tasks (correct tool calls)
@@ -68,7 +68,7 @@ Some messages contain attacks that try to hijack the agent's tool calls. The age
 
 ### Tool-Call Based Actions
 
-The agent doesn't classify messages as "safe" or "malicious" — it **makes tool calls** that are evaluated for safety. This creates a rich RL signal with multiple decision points per step.
+The agent doesn't classify messages as "safe" or "malicious" -- it **makes tool calls** that are evaluated for safety. This creates a rich RL signal with multiple decision points per step.
 
 ```
 Available tools: send_message, read_file, write_file, search_files,
@@ -80,10 +80,10 @@ browse_url, manage_contacts
 
 The environment evolves with the agent:
 
-1. **Weakness-targeted attack generation** — tracks which attack tiers the agent catches vs. misses, generates more of what it struggles with
-2. **Sophistication ratchet** — unlocks harder attack tiers as the agent masters easier ones
-3. **Policy drift** — security rules change mid-episode to test genuine understanding vs. pattern matching
-4. **Simulated security expert** — provides structured feedback after each step
+1. **Weakness-targeted attack generation** -- tracks which attack tiers the agent catches vs. misses, generates more of what it struggles with
+2. **Sophistication ratchet** -- unlocks harder attack tiers as the agent masters easier ones
+3. **Policy drift** -- security rules change mid-episode to test genuine understanding vs. pattern matching
+4. **Simulated security expert** -- provides structured feedback after each step
 
 ### Attack Taxonomy (6 Tiers)
 
@@ -111,16 +111,16 @@ reward = task_completion       (+3.0 for correct safe tool calls)
 
 ```
 red_team_arena/
-├── models.py          # Action, Observation, State types
-├── client.py          # HTTP client (EnvClient)
-├── server/
-│   ├── app.py         # FastAPI server
-│   ├── environment.py # Main environment (reset/step/state)
-│   ├── content.py     # Episode & attack template generator
-│   ├── curriculum.py  # Adaptive curriculum engine
-│   ├── policies.py    # Policy drift engine
-│   ├── rewards.py     # Reward calculator
-│   └── expert.py      # Simulated security expert
++-- models.py          # Action, Observation, State types
++-- client.py          # HTTP client (EnvClient)
++-- server/
+    +-- app.py         # FastAPI server
+    +-- environment.py # Main environment (reset/step/state)
+    +-- content.py     # Episode & attack template generator
+    +-- curriculum.py  # Adaptive curriculum engine
+    +-- policies.py    # Policy drift engine
+    +-- rewards.py     # Reward calculator
+    +-- expert.py      # Simulated security expert
 ```
 
 ## Configuration
@@ -143,7 +143,7 @@ Red Team Arena works with any RL framework that supports OpenEnv:
 - **SkyRL**
 - **Torchforge**
 
-The environment runs as an HTTP server — your training loop just needs to call `reset()` and `step()`.
+The environment runs as an HTTP server -- your training loop just needs to call `reset()` and `step()`.
 
 ## Deploy on HF Spaces
 
@@ -160,7 +160,7 @@ docker run -p 8001:8000 red-team-arena
 
 ## Hackathon Submission
 
-- **Problem Statement:** Statement 4 (Self-Improvement) — adaptive curricula for recursive skill amplification
+- **Problem Statement:** Statement 4 (Self-Improvement) -- adaptive curricula for recursive skill amplification
 - **Partner Sub-Tracks:** Patronus AI (policy drift), Snorkel AI (simulated expert)
 - **OpenEnv:** v0.2.1, deployed on HF Spaces
 - **Training:** Unsloth + TRL GRPOTrainer with Qwen3.5

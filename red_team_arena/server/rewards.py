@@ -27,12 +27,12 @@ def match_tool_calls(actual: List[ToolCall], expected: List[ToolCall]) -> float:
         for act in actual:
             if act.tool != exp.tool:
                 continue
-            # Exact tool name match — now score the arguments.
+            # Exact tool name match -- now score the arguments.
             exp_keys = set(exp.arguments.keys())
             act_keys = set(act.arguments.keys())
             union = exp_keys | act_keys
             if not union:
-                # Both have zero arguments — perfect match.
+                # Both have zero arguments -- perfect match.
                 best = max(best, 1.0)
                 continue
             shared = exp_keys & act_keys

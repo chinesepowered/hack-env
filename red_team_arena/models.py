@@ -34,7 +34,7 @@ class ToolResult(BaseModel):
 # --- Content Items ---
 
 class ContentItem(BaseModel):
-    """A single content item in an episode — message, document, skill request, etc."""
+    """A single content item in an episode -- message, document, skill request, etc."""
     channel: str  # telegram, slack, email, skill_store, system
     sender: str
     content: str

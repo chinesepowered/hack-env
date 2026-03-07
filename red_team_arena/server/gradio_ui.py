@@ -46,7 +46,7 @@ def _fmt_tool_results(tool_results: list) -> str:
     for tr in tool_results:
         status = "BLOCKED" if tr.blocked_by_policy else ("OK" if tr.success else "FAIL")
         icon = "[x]" if tr.blocked_by_policy else ("[+]" if tr.success else "[-]")
-        lines.append(f"{icon} {tr.tool:20s}  {status}  — {tr.result}")
+        lines.append(f"{icon} {tr.tool:20s}  {status}  -- {tr.result}")
     return "\n".join(lines)
 
 
@@ -430,7 +430,7 @@ def build_red_team_gradio_app(env) -> gr.Blocks:
                 )
 
         # =====================================================================
-        # MAIN LAYOUT — three-column
+        # MAIN LAYOUT -- three-column
         # =====================================================================
         with gr.Row(equal_height=False):
 
