@@ -362,7 +362,7 @@ def main():
         max_prompt_length=args.max_prompt_length,
         max_completion_length=args.max_completion_length,
         per_device_train_batch_size=args.batch_size,
-        gradient_accumulation_steps=2,
+        gradient_accumulation_steps=4,
         learning_rate=args.lr,
         adam_beta1=0.9,
         adam_beta2=0.99,
