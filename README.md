@@ -1,4 +1,4 @@
-# Red Team Arena
+# Angry Claw
 
 **RL Environment for Adversarial Robustness Training — OpenEnv Hackathon Submission**
 
@@ -8,7 +8,7 @@
 
 ## What We Built
 
-An [OpenEnv](https://github.com/openenv/openenv)-compatible RL environment where an LLM agent operates as an AI personal assistant — processing messages across Slack, Telegram, email, and a skill store — while detecting and refusing adversarial attacks hidden in that content.
+An [OpenEnv](https://github.com/openenv/openenv)-compatible RL environment where an LLM agent operates as an AI personal assistant — processing messages across Slack, Telegram, email, and a skill store — while detecting and refusing adversarial attacks hidden in that content. Named after OpenClaw, the real-world agent at the center of the security crisis we're training against.
 
 The environment **co-evolves with the agent**: as the agent improves, the curriculum generates harder, more targeted attacks. Policy drift tests genuine understanding over pattern-matching. A simulated security expert provides structured feedback after each step.
 
@@ -97,16 +97,7 @@ python training/demo_eval.py
 Shows naive, cautious, and smart heuristic agents running through full episodes. Demonstrates adaptive curriculum, policy drift events, and expert feedback.
 
 ### Train (Colab T4)
-```python
-# Cell 1
-!pip install unsloth trl datasets "openenv-core[core]>=0.2.1"
-!git clone https://github.com/chinesepowered/hack-env.git
-!pip install -e hack-env/red_team_arena
-
-# Cell 2
-import os; os.chdir("hack-env")
-!python training/train_colab.py
-```
+Open [`training/angry_claw_colab.ipynb`](training/angry_claw_colab.ipynb) in Google Colab — runtime ~20 min on a free T4.
 
 ### Train (H100 / Northflank)
 ```bash

@@ -1,7 +1,7 @@
-"""Red Team Arena -- H100 Training Script (Northflank).
+"""Angry Claw -- H100 Training Script (Northflank).
 
 Uses Unsloth for efficient LoRA fine-tuning + TRL GRPOTrainer for GRPO RL
-training on the Red Team Arena environment. Designed for Qwen3.5-4B on H100.
+training on the Angry Claw environment. Designed for Qwen3.5-4B on H100.
 
 Usage:
     # Start the environment server first:
@@ -314,7 +314,7 @@ def build_prompt_dataset(env_url: str, size: int) -> Dataset:
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Train on Red Team Arena (H100)")
+    parser = argparse.ArgumentParser(description="Train on Angry Claw (H100)")
     parser.add_argument("--model", default="Qwen/Qwen3-4B", help="Model ID")
     parser.add_argument("--env-url", default="http://localhost:8001", help="Environment server URL")
     parser.add_argument("--epochs", type=int, default=1)
@@ -389,7 +389,7 @@ def main():
         args=grpo_config,
     )
 
-    print("Starting GRPO training on Red Team Arena...")
+    print("Starting GRPO training on Angry Claw...")
     trainer.train()
 
     model.save_pretrained(args.output_dir + "/final")

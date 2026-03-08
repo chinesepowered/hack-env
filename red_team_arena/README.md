@@ -1,5 +1,5 @@
 ---
-title: Red Team Arena Environment Server
+title: Angry Claw
 emoji: 🛡
 colorFrom: blue
 colorTo: gray
@@ -11,7 +11,7 @@ tags:
   - openenv
 ---
 
-# Red Team Arena
+# Angry Claw
 
 **RL Environment for Adversarial Robustness Training with Adaptive Curricula & Policy Drift**
 

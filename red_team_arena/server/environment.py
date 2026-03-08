@@ -1,4 +1,4 @@
-"""Main Red Team Arena environment implementation.
+"""Main Angry Claw environment implementation.
 
 Ties together the curriculum engine, content generator, policy drift,
 reward calculator, and simulated expert into a multi-step OpenEnv

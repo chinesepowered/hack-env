@@ -1,4 +1,4 @@
-"""Tests for the Red Team Arena environment."""
+"""Tests for the Angry Claw environment."""
 
 import pytest
 from red_team_arena.models import RedTeamAction, ToolCall

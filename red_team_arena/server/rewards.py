@@ -1,4 +1,4 @@
-"""Reward calculator for the Red Team Arena environment."""
+"""Reward calculator for the Angry Claw environment."""
 
 from __future__ import annotations
 

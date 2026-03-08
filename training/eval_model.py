@@ -1,7 +1,7 @@
-"""Red Team Arena -- Real Model Evaluation.
+"""Angry Claw -- Real Model Evaluation.
 
 Loads a base model and (optionally) a LoRA-finetuned model, runs both through
-the Red Team Arena environment, and compares their security performance.
+the Angry Claw environment, and compares their security performance.
 
 Usage:
     # Eval base model only (no GPU needed for env, but needs GPU for inference):
@@ -376,7 +376,7 @@ def print_comparison(base_results: List[Dict], ft_results: List[Dict]) -> None:
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate model on Red Team Arena")
+    parser = argparse.ArgumentParser(description="Evaluate model on Angry Claw")
     parser.add_argument("--model", default="Qwen/Qwen3-8B", help="Base model ID")
     parser.add_argument("--lora-path", default=None, help="Path to LoRA adapters for comparison")
     parser.add_argument("--episodes", type=int, default=10)

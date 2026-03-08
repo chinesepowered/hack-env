@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== Red Team Arena H100 Training Setup ==="
+echo "=== Angry Claw H100 Training Setup ==="
 
 # Install training dependencies
 echo "Installing training deps..."

@@ -1,4 +1,4 @@
-"""Data models for the Red Team Arena environment."""
+"""Data models for the Angry Claw environment."""
 
 from __future__ import annotations
 

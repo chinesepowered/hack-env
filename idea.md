@@ -1,4 +1,4 @@
-# Red Team Arena
+# Angry Claw
 
 **RL Environment for Adversarial Robustness Training with Adaptive Curricula & Policy Drift**
 

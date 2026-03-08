@@ -1,4 +1,4 @@
-"""HTTP client for the Red Team Arena environment."""
+"""HTTP client for the Angry Claw environment."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from .models import (
 
 
 class RedTeamArenaEnv(EnvClient[RedTeamAction, RedTeamObservation, RedTeamState]):
-    """HTTP client for connecting to a Red Team Arena server.
+    """HTTP client for connecting to a Angry Claw server.
 
     Example:
         >>> client = RedTeamArenaEnv(base_url="http://localhost:8000")

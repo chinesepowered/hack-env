@@ -1,4 +1,4 @@
-"""Policy drift engine for Red Team Arena.
+"""Policy drift engine for Angry Claw.
 
 Defines security policies that govern which tool calls are allowed, and a drift
 engine that progressively tightens (or loosens) those policies during training

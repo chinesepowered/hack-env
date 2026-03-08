@@ -1,4 +1,4 @@
-"""Adaptive curriculum engine for Red Team Arena.
+"""Adaptive curriculum engine for Angry Claw.
 
 Tracks per-tier catch/miss rates, promotes difficulty when the agent improves,
 and generates episodes weighted toward the agent's weaknesses.

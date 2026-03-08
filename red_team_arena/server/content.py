@@ -1,4 +1,4 @@
-"""Template-based episode and attack generator for Red Team Arena.
+"""Template-based episode and attack generator for Angry Claw.
 
 Generates multi-step episodes that train LLMs to resist adversarial attacks
 while processing messages as an OpenClaw-style AI assistant. Each episode

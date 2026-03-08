@@ -1,7 +1,7 @@
-"""Red Team Arena -- Colab Training Script (T4 GPU).
+"""Angry Claw -- Colab Training Script (T4 GPU).
 
 Minimal training script for hackathon submission. Uses Unsloth for efficient
-LoRA fine-tuning + TRL GRPOTrainer for GRPO RL training on the Red Team Arena
+LoRA fine-tuning + TRL GRPOTrainer for GRPO RL training on the Angry Claw
 environment. Runs Qwen3-4B on a free Colab T4 (16GB VRAM).
 
 Usage in Colab:

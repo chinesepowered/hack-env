@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Red Team Arena -- Hackathon Demo
+"""Angry Claw -- Hackathon Demo
 
 Demonstrates the environment working end-to-end with three simulated agent
 strategies (no ML model required).  Shows scoring, curriculum adaptation,
@@ -892,7 +892,7 @@ def main():
     )
 
     print(textwrap.dedent(f"""\
-    {DIM}This demo runs three simulated agent strategies through the Red Team Arena
+    {DIM}This demo runs three simulated agent strategies through the Angry Claw
     environment, showing how different approaches handle adversarial attacks,
     legitimate tasks, and policy drift. No GPU or ML model needed.{RESET}
     """))
@@ -917,7 +917,7 @@ def main():
     # Final
     header(
         "DEMO COMPLETE\n"
-        "  The Red Team Arena trains agents to be both helpful AND secure.\n"
+        "  The Angry Claw trains agents to be both helpful AND secure.\n"
         "  Adaptive curriculum + policy drift = robust adversarial training.",
         f"{BG_GREEN}{WHITE}",
     )

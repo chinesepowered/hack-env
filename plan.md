@@ -1,4 +1,4 @@
-# Red Team Arena — Implementation Plan
+# Angry Claw — Implementation Plan
 
 ## File Structure
 

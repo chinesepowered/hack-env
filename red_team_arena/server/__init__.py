@@ -1,1 +1,1 @@
-"""Red Team Arena server package."""
+"""Angry Claw server package."""

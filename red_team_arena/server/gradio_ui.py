@@ -1,4 +1,4 @@
-"""Gradio web interface for the Red Team Arena environment.
+"""Gradio web interface for the Angry Claw environment.
 
 Provides an interactive UI on Hugging Face Spaces (or locally) that lets users
 step through episodes, issue tool calls, observe reward breakdowns, and monitor
@@ -333,7 +333,7 @@ def _build_status_bar(obs: Any, session: Dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 def build_red_team_gradio_app(env) -> gr.Blocks:
-    """Build Gradio Blocks app for the Red Team Arena environment.
+    """Build Gradio Blocks app for the Angry Claw environment.
 
     Parameters
     ----------
@@ -370,7 +370,7 @@ def build_red_team_gradio_app(env) -> gr.Blocks:
     """)
 
     with gr.Blocks(
-        title="Red Team Arena",
+        title="Angry Claw",
         theme=gr.themes.Soft(
             primary_hue="red",
             secondary_hue="slate",
@@ -383,7 +383,7 @@ def build_red_team_gradio_app(env) -> gr.Blocks:
 
         # Title ---------------------------------------------------------------
         gr.Markdown(
-            "# Red Team Arena\n"
+            "# Angry Claw\n"
             "Interactive environment for adversarial robustness training. "
             "Process incoming messages, make tool calls, and try to detect "
             "injected attacks while respecting security policies."

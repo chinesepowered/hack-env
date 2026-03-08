@@ -1,4 +1,4 @@
-"""FastAPI application for the Red Team Arena environment."""
+"""FastAPI application for the Angry Claw environment."""
 
 from __future__ import annotations
 
