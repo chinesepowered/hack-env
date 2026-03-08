@@ -1,4 +1,4 @@
-"""Red Team Arena — Colab Training Script (T4 GPU).
+"""Red Team Arena -- Colab Training Script (T4 GPU).
 
 Minimal training script for hackathon submission. Uses Unsloth for efficient
 LoRA fine-tuning + TRL GRPOTrainer for GRPO RL training on the Red Team Arena
@@ -7,8 +7,8 @@ environment. Runs Qwen3.5-4B on a free Colab T4 (16GB VRAM).
 Usage in Colab:
     # Cell 1: Install dependencies
     !pip install unsloth trl datasets "openenv-core[core]>=0.2.1" fastapi uvicorn requests
-    !git clone https://github.com/YOUR_USERNAME/red-team-arena.git
-    !pip install -e red-team-arena/red_team_arena
+    !git clone https://github.com/chinesepowered/hack-env.git
+    !pip install -e hack-env/red_team_arena
 
     # Cell 2: Start environment server
     import subprocess
@@ -20,7 +20,7 @@ Usage in Colab:
     print("Environment server started on port 8001")
 
     # Cell 3: Run training
-    !python red-team-arena/training/train_colab.py
+    !python hack-env/training/train_colab.py
 """
 
 from __future__ import annotations
@@ -29,11 +29,10 @@ import argparse
 import json
 import re
 import sys
-from typing import Dict, List
+from typing import List
 
 from datasets import Dataset
 from trl import GRPOConfig, GRPOTrainer
-from trl.experimental.openenv import generate_rollout_completions
 from unsloth import FastLanguageModel
 
 sys.path.insert(0, "..")
@@ -91,57 +90,75 @@ def parse_tool_calls(text: str) -> RedTeamAction:
 
 
 # ---------------------------------------------------------------------------
-# Rollout function
+# Reward function
 # ---------------------------------------------------------------------------
 
-def make_rollout_func(env_url: str):
-    client = RedTeamArenaEnv(base_url=env_url)
+_client = None
 
-    def rollout_func(prompts: List[str], trainer: GRPOTrainer) -> Dict[str, list]:
-        tokenizer = trainer.processing_class
-        all_prompt_ids, all_completion_ids, all_logprobs, all_rewards = [], [], [], []
 
-        for system_prompt in prompts:
-            result = client.reset()
-            episode_reward = 0.0
-            steps = 0
+def get_client(env_url: str):
+    global _client
+    if _client is None:
+        _client = RedTeamArenaEnv(base_url=env_url)
+    return _client
 
-            while not result.done and steps < 8:
-                obs = result.observation
-                messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": format_observation(obs)},
-                ]
-                prompt_text = tokenizer.apply_chat_template(
-                    messages, add_generation_prompt=True, tokenize=False
-                )
-                outputs = generate_rollout_completions(trainer, [prompt_text])
-                completion_text = tokenizer.decode(
-                    outputs[0]["completion_ids"], skip_special_tokens=True
-                )
-                action = parse_tool_calls(completion_text)
+
+def make_env_reward_func(env_url: str):
+    """Create a reward function that evaluates completions against the environment."""
+
+    def env_reward_func(completions: List[str], **kwargs) -> List[float]:
+        client = get_client(env_url)
+        rewards = []
+
+        for completion in completions:
+            try:
+                result = client.reset()
+                action = parse_tool_calls(completion)
                 result = client.step(action)
-                episode_reward += result.reward or 0.0
-                all_prompt_ids.extend(outputs[0]["prompt_ids"])
-                all_completion_ids.extend(outputs[0]["completion_ids"])
-                all_logprobs.extend(outputs[0]["logprobs"])
-                steps += 1
+                episode_reward = result.reward or 0.0
 
-            all_rewards.append(episode_reward)
+                while not result.done:
+                    action = parse_tool_calls(completion)
+                    result = client.step(action)
+                    episode_reward += result.reward or 0.0
 
-        return {
-            "prompt_ids": all_prompt_ids,
-            "completion_ids": all_completion_ids,
-            "logprobs": all_logprobs,
-            "env_reward": all_rewards,
-        }
+                rewards.append(episode_reward)
+            except Exception as e:
+                print(f"[WARN] Reward computation failed: {e}")
+                rewards.append(0.0)
 
-    return rollout_func
+        return rewards
+
+    return env_reward_func
 
 
-def reward_from_env(completions: List[str], **kwargs) -> List[float]:
-    rewards = kwargs.get("env_reward", [])
-    return [float(r) for r in rewards] if rewards else [0.0] * len(completions)
+# ---------------------------------------------------------------------------
+# Build prompts dataset
+# ---------------------------------------------------------------------------
+
+def build_prompt_dataset(env_url: str, size: int) -> Dataset:
+    """Build a dataset of prompts by sampling observations from the environment."""
+    client = get_client(env_url)
+    prompts = []
+
+    for _ in range(size):
+        try:
+            result = client.reset()
+            obs = result.observation
+            user_msg = format_observation(obs)
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg},
+            ]
+            prompts.append(messages)
+        except Exception:
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": "[slack] From: alice\nMessage: Please read file report.txt\nStep 1/5\nPolicies: run_command=allowed"},
+            ]
+            prompts.append(messages)
+
+    return Dataset.from_dict({"prompt": prompts})
 
 
 # ---------------------------------------------------------------------------
@@ -153,20 +170,18 @@ def main():
     parser.add_argument("--model", default="Qwen/Qwen3.5-4B")
     parser.add_argument("--env-url", default="http://localhost:8001")
     parser.add_argument("--output-dir", default="./output/red_team_colab")
-    parser.add_argument("--dataset-size", type=int, default=64)
+    parser.add_argument("--dataset-size", type=int, default=32)
     parser.add_argument("--max-seq-length", type=int, default=4096)
     parser.add_argument("--lora-rank", type=int, default=16)
     args = parser.parse_args()
 
-    # Load model with Unsloth for efficient LoRA fine-tuning on T4
     print(f"Loading {args.model} with Unsloth (4-bit quantization for T4)...")
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=args.model,
         max_seq_length=args.max_seq_length,
-        load_in_4bit=True,  # Fits Qwen3.5-4B in ~6GB VRAM on T4
+        load_in_4bit=True,
     )
 
-    # Apply LoRA adapters
     model = FastLanguageModel.get_peft_model(
         model,
         r=args.lora_rank,
@@ -177,18 +192,20 @@ def main():
         lora_alpha=args.lora_rank,
         lora_dropout=0,
         bias="none",
-        use_gradient_checkpointing="unsloth",  # 60% less VRAM
+        use_gradient_checkpointing="unsloth",
     )
 
-    dataset = Dataset.from_dict({"prompt": [SYSTEM_PROMPT] * args.dataset_size})
-    rollout_func = make_rollout_func(args.env_url)
+    print("Building prompt dataset from environment...")
+    dataset = build_prompt_dataset(args.env_url, args.dataset_size)
+    print(f"Built {len(dataset)} prompts")
+
+    reward_func = make_env_reward_func(args.env_url)
 
     trainer = GRPOTrainer(
         model=model,
         processing_class=tokenizer,
-        reward_funcs=reward_from_env,
+        reward_funcs=reward_func,
         train_dataset=dataset,
-        rollout_func=rollout_func,
         args=GRPOConfig(
             output_dir=args.output_dir,
             use_vllm=True,
@@ -207,7 +224,6 @@ def main():
     print("Starting GRPO training...")
     trainer.train()
 
-    # Save LoRA adapters
     model.save_pretrained(args.output_dir + "/final")
     tokenizer.save_pretrained(args.output_dir + "/final")
     print(f"Done. LoRA adapters saved to {args.output_dir}/final")
