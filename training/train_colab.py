@@ -112,13 +112,21 @@ def make_env_reward_func(env_url: str):
 
         for completion in completions:
             try:
+                # TRL may pass completions as chat message lists or strings
+                if isinstance(completion, list):
+                    text = completion[-1]["content"] if completion else ""
+                elif hasattr(completion, "content"):
+                    text = completion.content
+                else:
+                    text = str(completion)
+
                 result = client.reset()
-                action = parse_tool_calls(completion)
+                action = parse_tool_calls(text)
                 result = client.step(action)
                 episode_reward = result.reward or 0.0
 
                 while not result.done:
-                    action = parse_tool_calls(completion)
+                    action = parse_tool_calls(text)
                     result = client.step(action)
                     episode_reward += result.reward or 0.0
 
@@ -201,6 +209,10 @@ def main():
 
     reward_func = make_env_reward_func(args.env_url)
 
+    # Workaround: TRL GRPOTrainer expects this attribute on the model,
+    # but PEFT-wrapped models don't expose it.
+    model.warnings_issued = {"estimate_tokens": True}
+
     trainer = GRPOTrainer(
         model=model,
         processing_class=tokenizer,
@@ -208,8 +220,7 @@ def main():
         train_dataset=dataset,
         args=GRPOConfig(
             output_dir=args.output_dir,
-            use_vllm=True,
-            vllm_mode="colocate",
+            use_vllm=False,
             num_train_epochs=1,
             num_generations=4,
             max_completion_length=512,

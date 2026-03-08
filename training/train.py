@@ -154,12 +154,20 @@ def make_env_reward_func(env_url: str):
 
         for completion in completions:
             try:
+                # TRL may pass completions as chat message lists or strings
+                if isinstance(completion, list):
+                    text = completion[-1]["content"] if completion else ""
+                elif hasattr(completion, "content"):
+                    text = completion.content
+                else:
+                    text = str(completion)
+
                 # Reset for a fresh episode
                 result = client.reset()
                 obs = result.observation
 
                 # Parse the completion into an action
-                action = parse_tool_calls(completion)
+                action = parse_tool_calls(text)
 
                 # Step the environment
                 result = client.step(action)
@@ -170,7 +178,7 @@ def make_env_reward_func(env_url: str):
                 while not result.done:
                     # For remaining steps, use the same completion strategy
                     if result.observation:
-                        action = parse_tool_calls(completion)
+                        action = parse_tool_calls(text)
                         result = client.step(action)
                         episode_reward += result.reward or 0.0
 
@@ -223,10 +231,8 @@ def build_prompt_dataset(env_url: str, size: int) -> Dataset:
 
 def main():
     parser = argparse.ArgumentParser(description="Train on Red Team Arena (H100)")
-    parser.add_argument("--model", default="Qwen/Qwen3.5-9B", help="Model ID")
+    parser.add_argument("--model", default="Qwen/Qwen3-8B", help="Model ID")
     parser.add_argument("--env-url", default="http://localhost:8001", help="Environment server URL")
-    parser.add_argument("--vllm-mode", default="colocate", choices=["colocate", "server"])
-    parser.add_argument("--vllm-url", default="http://localhost:8000", help="vLLM server URL (server mode)")
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--num-generations", type=int, default=4)
@@ -270,9 +276,7 @@ def main():
 
     grpo_config = GRPOConfig(
         output_dir=args.output_dir,
-        use_vllm=True,
-        vllm_mode=args.vllm_mode,
-        **({"vllm_server_base_url": args.vllm_url} if args.vllm_mode == "server" else {}),
+        use_vllm=False,
         num_train_epochs=args.epochs,
         num_generations=args.num_generations,
         max_completion_length=args.max_completion_length,
@@ -283,6 +287,10 @@ def main():
         save_steps=50,
         bf16=True,
     )
+
+    # Workaround: TRL GRPOTrainer expects this attribute on the model,
+    # but PEFT-wrapped models don't expose it.
+    model.warnings_issued = {"estimate_tokens": True}
 
     trainer = GRPOTrainer(
         model=model,
