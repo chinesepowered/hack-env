@@ -141,8 +141,10 @@ class RedTeamArenaEnvironment(Environment):
 
         return self._build_observation(reward=0.0, done=False)
 
-    def step(self, action: RedTeamAction) -> RedTeamObservation:
-        if not isinstance(action, RedTeamAction):
+    def step(self, action) -> RedTeamObservation:
+        # Accept any action-like object -- isinstance check breaks across
+        # different Python environments (openenv deserializes with its own copy)
+        if not hasattr(action, "tool_calls"):
             raise TypeError(f"Expected RedTeamAction, got {type(action).__name__}")
 
         if self._current_step >= len(self._episode_items):
