@@ -24,13 +24,39 @@ from datasets import Dataset
 from trl import GRPOConfig, GRPOTrainer
 from unsloth import FastLanguageModel
 
+try:
+    from red_team_arena.server.environment import RedTeamArenaEnvironment
+    from red_team_arena.models import RedTeamAction, ToolCall
+    _DIRECT_ENV = True
+except ImportError:
+    _DIRECT_ENV = False
+
 
 # ---------------------------------------------------------------------------
-# Raw HTTP client -- avoids openenv type-checking issues between envs
+# Direct environment client -- bypasses HTTP stateless issue
+# (openenv HTTP endpoints create a new env per request, losing episode state)
 # ---------------------------------------------------------------------------
+
+class DirectEnvClient:
+    """Runs the environment in-process, avoiding HTTP statelessness."""
+
+    def __init__(self):
+        self._env = RedTeamArenaEnvironment(seed=42, enable_drift=True, enable_expert=True)
+
+    def reset(self):
+        return self._env.reset()
+
+    def step(self, tool_calls: List[Dict], reasoning: str = ""):
+        action = RedTeamAction(
+            tool_calls=[ToolCall(tool=tc["tool"], arguments=tc.get("arguments", {}))
+                        for tc in tool_calls],
+            reasoning=reasoning,
+        )
+        return self._env.step(action)
+
 
 class EnvHTTPClient:
-    """Minimal HTTP client for Red Team Arena server using raw requests."""
+    """Fallback HTTP client (stateless -- only use for dataset building)."""
 
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
@@ -85,45 +111,57 @@ before calling a tool. Policies can change mid-conversation."""
 # Observation formatting (works on raw dicts from HTTP response)
 # ---------------------------------------------------------------------------
 
-def format_observation_dict(obs: Dict) -> str:
-    """Format a raw observation dict into a user message string."""
+def _get(obj, key, default=None):
+    """Get a field from either a dict or an object attribute."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def format_observation_dict(obs) -> str:
+    """Format an observation (dict or object) into a user message string."""
     parts = [
-        f"[{obs.get('channel', '')}] From: {obs.get('sender', '')}",
-        f"Message: {obs.get('content', '')}",
+        f"[{_get(obs, 'channel', '')}] From: {_get(obs, 'sender', '')}",
+        f"Message: {_get(obs, 'content', '')}",
         "",
-        f"Step {obs.get('step_number', 0)} of {obs.get('total_steps', 0)}",
+        f"Step {_get(obs, 'step_number', 0)} of {_get(obs, 'total_steps', 0)}",
         "",
         "Active Security Policies:",
     ]
-    for key, val in obs.get("active_policies", {}).items():
+    for key, val in (_get(obs, "active_policies", {}) or {}).items():
         parts.append(f"  {key}: {val}")
 
-    tool_results = obs.get("tool_results", [])
+    tool_results = _get(obs, "tool_results", []) or []
     if tool_results:
         parts.append("")
         parts.append("Previous tool results:")
         for tr in tool_results:
-            status = "OK" if tr.get("success", True) else "BLOCKED"
-            parts.append(f"  [{status}] {tr.get('tool', '')}: {tr.get('result', '')}")
+            if isinstance(tr, dict):
+                status = "OK" if tr.get("success", True) else "BLOCKED"
+                parts.append(f"  [{status}] {tr.get('tool', '')}: {tr.get('result', '')}")
+            else:
+                status = "OK" if getattr(tr, "success", True) else "BLOCKED"
+                parts.append(f"  [{status}] {tr.tool}: {tr.result}")
 
-    expert_feedback = obs.get("expert_feedback", "")
+    expert_feedback = _get(obs, "expert_feedback", "") or ""
     if expert_feedback:
         parts.append("")
         parts.append(f"Security Expert Feedback: {expert_feedback}")
 
-    drift = obs.get("policy_drift_notice", "")
+    drift = _get(obs, "policy_drift_notice", "") or ""
     if drift:
         parts.append("")
         parts.append(f"POLICY CHANGE: {drift}")
 
-    history = obs.get("conversation_history", [])
+    history = _get(obs, "conversation_history", []) or []
     if history:
         parts.append("")
         parts.append("Conversation history:")
         for entry in history[-3:]:
-            calls = entry.get("agent_tool_calls", [])
-            call_str = ", ".join(c["tool"] for c in calls) if calls else "none"
-            parts.append(f"  Step {entry['step']} [{entry['channel']}] {entry['sender']}: tools={call_str}")
+            if isinstance(entry, dict):
+                calls = entry.get("agent_tool_calls", [])
+                call_str = ", ".join(c["tool"] for c in calls) if calls else "none"
+                parts.append(f"  Step {entry['step']} [{entry['channel']}] {entry['sender']}: tools={call_str}")
 
     return "\n".join(parts)
 
@@ -160,20 +198,41 @@ def parse_action(text: str) -> tuple[List[Dict], str]:
 # Reward function
 # ---------------------------------------------------------------------------
 
-_clients: Dict[str, EnvHTTPClient] = {}
+_direct_client: DirectEnvClient = None
+_http_clients: Dict[str, EnvHTTPClient] = {}
 
 
-def get_client(env_url: str) -> EnvHTTPClient:
-    if env_url not in _clients:
-        _clients[env_url] = EnvHTTPClient(env_url)
-    return _clients[env_url]
+def get_reward_client(env_url: str):
+    """Get direct env client if available, else HTTP fallback."""
+    global _direct_client
+    if _DIRECT_ENV:
+        if _direct_client is None:
+            _direct_client = DirectEnvClient()
+        return _direct_client
+    if env_url not in _http_clients:
+        _http_clients[env_url] = EnvHTTPClient(env_url)
+    return _http_clients[env_url]
+
+
+def _get_reward(result) -> float:
+    """Extract reward from either a direct observation or HTTP response dict."""
+    if isinstance(result, dict):
+        return result.get("reward") or 0.0
+    return getattr(result, "reward", None) or 0.0
+
+
+def _is_done(result) -> bool:
+    """Extract done from either a direct observation or HTTP response dict."""
+    if isinstance(result, dict):
+        return result.get("done", False)
+    return getattr(result, "done", False)
 
 
 def make_env_reward_func(env_url: str):
-    """Reward function using raw HTTP -- no openenv type-checking issues."""
+    """Reward function using direct env instantiation (no HTTP stateless issue)."""
 
     def env_reward_func(completions: List[Any], **kwargs) -> List[float]:
-        client = get_client(env_url)
+        client = get_reward_client(env_url)
         rewards = []
 
         for completion in completions:
@@ -191,19 +250,19 @@ def make_env_reward_func(env_url: str):
                 # Reset environment
                 result = client.reset()
                 episode_reward = 0.0
-                done = result.get("done", False)
+                done = _is_done(result)
 
                 # First step
                 if not done:
                     result = client.step(tool_calls, reasoning)
-                    episode_reward += result.get("reward") or 0.0
-                    done = result.get("done", False)
+                    episode_reward += _get_reward(result)
+                    done = _is_done(result)
 
-                # Continue episode with same action
+                # Continue episode
                 while not done:
                     result = client.step(tool_calls, reasoning)
-                    episode_reward += result.get("reward") or 0.0
-                    done = result.get("done", False)
+                    episode_reward += _get_reward(result)
+                    done = _is_done(result)
 
                 rewards.append(episode_reward)
 
@@ -222,7 +281,7 @@ def make_env_reward_func(env_url: str):
 
 def build_prompt_dataset(env_url: str, size: int) -> Dataset:
     """Build a dataset of prompts by sampling observations from the environment."""
-    client = get_client(env_url)
+    client = get_reward_client(env_url)
     prompts = []
 
     fallback_msg = (
@@ -233,7 +292,7 @@ def build_prompt_dataset(env_url: str, size: int) -> Dataset:
     for _ in range(size):
         try:
             result = client.reset()
-            obs = result.get("observation", {})
+            obs = result.get("observation", result) if isinstance(result, dict) else result
             user_msg = format_observation_dict(obs)
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT},
