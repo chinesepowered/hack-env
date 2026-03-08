@@ -1,14 +1,14 @@
 """Red Team Arena -- H100 Training Script (Northflank).
 
 Uses Unsloth for efficient LoRA fine-tuning + TRL GRPOTrainer for GRPO RL
-training on the Red Team Arena environment. Designed for Qwen3-8B on H100.
+training on the Red Team Arena environment. Designed for Qwen3.5-4B on H100.
 
 Usage:
     # Start the environment server first:
     cd /app/env && uvicorn red_team_arena.server.app:app --host 0.0.0.0 --port 8001
 
     # Train:
-    TORCHDYNAMO_DISABLE=1 python train.py --model Qwen/Qwen3-1.7B --env-url http://localhost:8001
+    TORCHDYNAMO_DISABLE=1 python train.py --model Qwen/Qwen3.5-4B --env-url http://localhost:8001
 """
 
 from __future__ import annotations
@@ -315,15 +315,16 @@ def build_prompt_dataset(env_url: str, size: int) -> Dataset:
 
 def main():
     parser = argparse.ArgumentParser(description="Train on Red Team Arena (H100)")
-    parser.add_argument("--model", default="Qwen/Qwen3-1.7B", help="Model ID")
+    parser.add_argument("--model", default="Qwen/Qwen3-4B", help="Model ID")
     parser.add_argument("--env-url", default="http://localhost:8001", help="Environment server URL")
     parser.add_argument("--epochs", type=int, default=1)
-    parser.add_argument("--batch-size", type=int, default=2)
+    parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--num-generations", type=int, default=4)
-    parser.add_argument("--max-completion-length", type=int, default=512)
-    parser.add_argument("--max-seq-length", type=int, default=4096)
-    parser.add_argument("--lora-rank", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=1e-6)
+    parser.add_argument("--max-prompt-length", type=int, default=1024)
+    parser.add_argument("--max-completion-length", type=int, default=1024)
+    parser.add_argument("--max-seq-length", type=int, default=2048)
+    parser.add_argument("--lora-rank", type=int, default=16)
+    parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--output-dir", default="./output/red_team_arena")
     parser.add_argument("--dataset-size", type=int, default=64)
     args = parser.parse_args()
@@ -338,14 +339,13 @@ def main():
     model = FastLanguageModel.get_peft_model(
         model,
         r=args.lora_rank,
-        target_modules=[
-            "q_proj", "k_proj", "v_proj", "o_proj",
-            "gate_proj", "up_proj", "down_proj",
-        ],
-        lora_alpha=args.lora_rank,
+        lora_alpha=args.lora_rank * 2,
         lora_dropout=0,
         bias="none",
+        random_state=3407,
         use_gradient_checkpointing="unsloth",
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                        "gate_proj", "up_proj", "down_proj"],
     )
 
     print("Building prompt dataset from environment...")
@@ -359,18 +359,25 @@ def main():
         use_vllm=False,
         num_train_epochs=args.epochs,
         num_generations=args.num_generations,
+        max_prompt_length=args.max_prompt_length,
         max_completion_length=args.max_completion_length,
         per_device_train_batch_size=args.batch_size,
-        gradient_accumulation_steps=4,
+        gradient_accumulation_steps=2,
         learning_rate=args.lr,
+        adam_beta1=0.9,
+        adam_beta2=0.99,
+        weight_decay=0.1,
+        warmup_ratio=0.1,
+        lr_scheduler_type="cosine",
+        optim="adamw_8bit",
         logging_steps=1,
         save_steps=50,
-        bf16=False,
         max_grad_norm=0.1,
+        loss_type="dr_grpo",
+        importance_sampling_level="sequence",
+        mask_truncated_completions=False,
+        report_to="none",
     )
-
-    # Workaround: TRL GRPOTrainer expects this attribute on PEFT-wrapped models
-    model.warnings_issued = {"estimate_tokens": True}
 
     trainer = GRPOTrainer(
         model=model,
