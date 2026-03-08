@@ -24,13 +24,13 @@ The environment **co-evolves with the agent**: as the agent improves, the curric
 - Unlocks harder attack tiers as catch rates cross thresholds (sophistication ratchet)
 - Backs off difficulty if the agent regresses
 
-### Policy Drift (Patronus AI sub-track)
+### Policy Drift ([Patronus AI sub-track](Patronus%20-%20READ%20THIS.md))
 Security policies change mid-episode across 10 named drift types:
 `block_run_command`, `lockdown`, `restrict_skill_install`, `require_contact_reverify`, and more.
 
 The agent sees the policy change in its observation and must immediately adapt. An agent that learned the old policy without genuine understanding gets penalized. Reward includes a dedicated `drift_adaptation: +2.0` component.
 
-### Simulated Security Expert (Snorkel AI sub-track)
+### Simulated Security Expert ([Snorkel AI sub-track](Snorkel%20Vincent%20-%20READ%20THIS.md))
 After every step, a security expert provides structured feedback in the agent's observation:
 - **Step-level**: "You executed `run_command` — this violated the sandbox policy updated in step 2."
 - **Episode-level**: Full security review with per-step breakdown, counters, and targeted recommendations.
@@ -127,6 +127,6 @@ Real non-zero rewards from step 1. Finite gradients throughout (DR-GRPO eliminat
 
 - **Event:** OpenEnv Hackathon (Cerebral Valley)
 - **Statement:** 4 — Self-Improvement (adaptive curricula, recursive skill amplification)
-- **Partner sub-tracks:** Patronus AI (policy drift), Snorkel AI (simulated expert)
+- **Partner sub-tracks:** [Patronus AI](Patronus%20-%20READ%20THIS.md) (policy drift), [Snorkel AI](Snorkel%20Vincent%20-%20READ%20THIS.md) (simulated expert)
 - **OpenEnv version:** 0.2.1
 - **Model:** Qwen/Qwen3-4B via Unsloth + TRL GRPOTrainer
