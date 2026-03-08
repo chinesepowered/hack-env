@@ -366,7 +366,6 @@ def main():
         logging_steps=1,
         save_steps=50,
         bf16=False,
-        fp32=True,
         max_grad_norm=0.1,
     )
 
