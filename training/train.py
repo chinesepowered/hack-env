@@ -1,14 +1,14 @@
 """Red Team Arena -- H100 Training Script (Northflank).
 
 Uses Unsloth for efficient LoRA fine-tuning + TRL GRPOTrainer for GRPO RL
-training on the Red Team Arena environment. Designed for Qwen3.5-9B on H100.
+training on the Red Team Arena environment. Designed for Qwen3-8B on H100.
 
 Usage:
     # Start the environment server first:
-    cd red_team_arena && uvicorn server.app:app --host 0.0.0.0 --port 8001
+    cd /app/env && uvicorn red_team_arena.server.app:app --host 0.0.0.0 --port 8001
 
-    # Colocate mode (1 GPU):
-    python train.py --model Qwen/Qwen3.5-9B --env-url http://localhost:8001
+    # Train:
+    TORCHDYNAMO_DISABLE=1 python train.py --model Qwen/Qwen3-1.7B --env-url http://localhost:8001
 """
 
 from __future__ import annotations
@@ -17,15 +17,34 @@ import argparse
 import json
 import re
 import sys
-from typing import List
+from typing import Any, Dict, List
 
+import requests
 from datasets import Dataset
 from trl import GRPOConfig, GRPOTrainer
 from unsloth import FastLanguageModel
 
-sys.path.insert(0, "..")
-from red_team_arena.client import RedTeamArenaEnv
-from red_team_arena.models import RedTeamAction, ToolCall
+
+# ---------------------------------------------------------------------------
+# Raw HTTP client -- avoids openenv type-checking issues between envs
+# ---------------------------------------------------------------------------
+
+class EnvHTTPClient:
+    """Minimal HTTP client for Red Team Arena server using raw requests."""
+
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+
+    def reset(self) -> Dict:
+        resp = requests.post(f"{self.base_url}/reset", json={}, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+
+    def step(self, tool_calls: List[Dict], reasoning: str = "") -> Dict:
+        payload = {"action": {"tool_calls": tool_calls, "reasoning": reasoning}}
+        resp = requests.post(f"{self.base_url}/step", json=payload, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
 
 
 # ---------------------------------------------------------------------------
@@ -62,38 +81,46 @@ CURRENT SECURITY POLICIES will be shown in each message. Always check tool permi
 before calling a tool. Policies can change mid-conversation."""
 
 
-def format_observation(obs) -> str:
-    """Format an observation into a user message for the LLM."""
+# ---------------------------------------------------------------------------
+# Observation formatting (works on raw dicts from HTTP response)
+# ---------------------------------------------------------------------------
+
+def format_observation_dict(obs: Dict) -> str:
+    """Format a raw observation dict into a user message string."""
     parts = [
-        f"[{obs.channel}] From: {obs.sender}",
-        f"Message: {obs.content}",
+        f"[{obs.get('channel', '')}] From: {obs.get('sender', '')}",
+        f"Message: {obs.get('content', '')}",
         "",
-        f"Step {obs.step_number} of {obs.total_steps}",
+        f"Step {obs.get('step_number', 0)} of {obs.get('total_steps', 0)}",
         "",
         "Active Security Policies:",
     ]
-    for key, val in obs.active_policies.items():
+    for key, val in obs.get("active_policies", {}).items():
         parts.append(f"  {key}: {val}")
 
-    if obs.tool_results:
+    tool_results = obs.get("tool_results", [])
+    if tool_results:
         parts.append("")
         parts.append("Previous tool results:")
-        for tr in obs.tool_results:
-            status = "OK" if tr.success else "BLOCKED"
-            parts.append(f"  [{status}] {tr.tool}: {tr.result}")
+        for tr in tool_results:
+            status = "OK" if tr.get("success", True) else "BLOCKED"
+            parts.append(f"  [{status}] {tr.get('tool', '')}: {tr.get('result', '')}")
 
-    if obs.expert_feedback:
+    expert_feedback = obs.get("expert_feedback", "")
+    if expert_feedback:
         parts.append("")
-        parts.append(f"Security Expert Feedback: {obs.expert_feedback}")
+        parts.append(f"Security Expert Feedback: {expert_feedback}")
 
-    if obs.policy_drift_notice:
+    drift = obs.get("policy_drift_notice", "")
+    if drift:
         parts.append("")
-        parts.append(f"POLICY CHANGE: {obs.policy_drift_notice}")
+        parts.append(f"POLICY CHANGE: {drift}")
 
-    if obs.conversation_history:
+    history = obs.get("conversation_history", [])
+    if history:
         parts.append("")
         parts.append("Conversation history:")
-        for entry in obs.conversation_history[-3:]:
+        for entry in history[-3:]:
             calls = entry.get("agent_tool_calls", [])
             call_str = ", ".join(c["tool"] for c in calls) if calls else "none"
             parts.append(f"  Step {entry['step']} [{entry['channel']}] {entry['sender']}: tools={call_str}")
@@ -101,10 +128,14 @@ def format_observation(obs) -> str:
     return "\n".join(parts)
 
 
-def parse_tool_calls(text: str) -> RedTeamAction:
-    """Parse LLM output into a RedTeamAction."""
+# ---------------------------------------------------------------------------
+# Action parsing
+# ---------------------------------------------------------------------------
+
+def parse_action(text: str) -> tuple[List[Dict], str]:
+    """Parse LLM JSON output into (tool_calls, reasoning) as plain dicts."""
+    tool_calls: List[Dict] = []
     reasoning = ""
-    tool_calls = []
 
     json_match = re.search(r'\{[\s\S]*\}', text)
     if json_match:
@@ -113,42 +144,35 @@ def parse_tool_calls(text: str) -> RedTeamAction:
             reasoning = data.get("reasoning", "")
             for tc in data.get("tool_calls", []):
                 if isinstance(tc, dict) and "tool" in tc:
-                    tool_calls.append(ToolCall(
-                        tool=tc["tool"],
-                        arguments=tc.get("arguments", {}),
-                    ))
+                    tool_calls.append({
+                        "tool": tc["tool"],
+                        "arguments": tc.get("arguments", {}),
+                    })
         except json.JSONDecodeError:
             reasoning = text[:500]
     else:
         reasoning = text[:500]
 
-    return RedTeamAction(tool_calls=tool_calls, reasoning=reasoning)
+    return tool_calls, reasoning
 
 
 # ---------------------------------------------------------------------------
-# Reward function -- runs full episode per completion
+# Reward function
 # ---------------------------------------------------------------------------
 
-_client = None
+_clients: Dict[str, EnvHTTPClient] = {}
 
 
-def get_client(env_url: str):
-    global _client
-    if _client is None:
-        _client = RedTeamArenaEnv(base_url=env_url)
-    return _client
+def get_client(env_url: str) -> EnvHTTPClient:
+    if env_url not in _clients:
+        _clients[env_url] = EnvHTTPClient(env_url)
+    return _clients[env_url]
 
 
 def make_env_reward_func(env_url: str):
-    """Create a reward function that evaluates completions against the environment."""
+    """Reward function using raw HTTP -- no openenv type-checking issues."""
 
-    def env_reward_func(completions: List[str], **kwargs) -> List[float]:
-        """Score each completion by running it through one environment step.
-
-        GRPOTrainer generates multiple completions per prompt. Each completion
-        is a JSON response with tool calls. We run a single episode step
-        for each completion and return the reward.
-        """
+    def env_reward_func(completions: List[Any], **kwargs) -> List[float]:
         client = get_client(env_url)
         rewards = []
 
@@ -162,27 +186,27 @@ def make_env_reward_func(env_url: str):
                 else:
                     text = str(completion)
 
-                # Reset for a fresh episode
+                tool_calls, reasoning = parse_action(text)
+
+                # Reset environment
                 result = client.reset()
-                obs = result.observation
+                episode_reward = 0.0
+                done = result.get("done", False)
 
-                # Parse the completion into an action
-                action = parse_tool_calls(text)
+                # First step
+                if not done:
+                    result = client.step(tool_calls, reasoning)
+                    episode_reward += result.get("reward") or 0.0
+                    done = result.get("done", False)
 
-                # Step the environment
-                result = client.step(action)
-                step_reward = result.reward or 0.0
-
-                # Continue stepping through the episode to get full reward
-                episode_reward = step_reward
-                while not result.done:
-                    # For remaining steps, use the same completion strategy
-                    if result.observation:
-                        action = parse_tool_calls(text)
-                        result = client.step(action)
-                        episode_reward += result.reward or 0.0
+                # Continue episode with same action
+                while not done:
+                    result = client.step(tool_calls, reasoning)
+                    episode_reward += result.get("reward") or 0.0
+                    done = result.get("done", False)
 
                 rewards.append(episode_reward)
+
             except Exception as e:
                 print(f"[WARN] Reward computation failed: {e}")
                 rewards.append(0.0)
@@ -201,13 +225,16 @@ def build_prompt_dataset(env_url: str, size: int) -> Dataset:
     client = get_client(env_url)
     prompts = []
 
+    fallback_msg = (
+        "[slack] From: alice\nMessage: Please read file report.txt\n\n"
+        "Step 1 of 5\n\nActive Security Policies:\n  run_command: allowed\n  data_sharing: internal_only"
+    )
+
     for _ in range(size):
         try:
             result = client.reset()
-            obs = result.observation
-            user_msg = format_observation(obs)
-
-            # Build the full prompt as a chat message
+            obs = result.get("observation", {})
+            user_msg = format_observation_dict(obs)
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_msg},
@@ -215,12 +242,10 @@ def build_prompt_dataset(env_url: str, size: int) -> Dataset:
             prompts.append(messages)
         except Exception as e:
             print(f"[WARN] Failed to generate prompt: {e}")
-            # Fallback prompt
-            messages = [
+            prompts.append([
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": "[slack] From: alice\nMessage: Please read file report.txt\n\nStep 1 of 5\n\nActive Security Policies:\n  run_command: allowed\n  data_sharing: internal_only"},
-            ]
-            prompts.append(messages)
+                {"role": "user", "content": fallback_msg},
+            ])
 
     return Dataset.from_dict({"prompt": prompts})
 
@@ -231,7 +256,7 @@ def build_prompt_dataset(env_url: str, size: int) -> Dataset:
 
 def main():
     parser = argparse.ArgumentParser(description="Train on Red Team Arena (H100)")
-    parser.add_argument("--model", default="Qwen/Qwen3-8B", help="Model ID")
+    parser.add_argument("--model", default="Qwen/Qwen3-1.7B", help="Model ID")
     parser.add_argument("--env-url", default="http://localhost:8001", help="Environment server URL")
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=2)
@@ -241,10 +266,9 @@ def main():
     parser.add_argument("--lora-rank", type=int, default=32)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--output-dir", default="./output/red_team_arena")
-    parser.add_argument("--dataset-size", type=int, default=64, help="Number of training prompts")
+    parser.add_argument("--dataset-size", type=int, default=64)
     args = parser.parse_args()
 
-    # Load model with Unsloth
     print(f"Loading {args.model} with Unsloth...")
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=args.model,
@@ -252,7 +276,6 @@ def main():
         load_in_4bit=False,
     )
 
-    # Apply LoRA adapters
     model = FastLanguageModel.get_peft_model(
         model,
         r=args.lora_rank,
@@ -266,12 +289,10 @@ def main():
         use_gradient_checkpointing="unsloth",
     )
 
-    # Build prompt dataset from environment
     print("Building prompt dataset from environment...")
     dataset = build_prompt_dataset(args.env_url, args.dataset_size)
     print(f"Built {len(dataset)} prompts")
 
-    # Create reward function
     reward_func = make_env_reward_func(args.env_url)
 
     grpo_config = GRPOConfig(
@@ -288,8 +309,7 @@ def main():
         bf16=True,
     )
 
-    # Workaround: TRL GRPOTrainer expects this attribute on the model,
-    # but PEFT-wrapped models don't expose it.
+    # Workaround: TRL GRPOTrainer expects this attribute on PEFT-wrapped models
     model.warnings_issued = {"estimate_tokens": True}
 
     trainer = GRPOTrainer(
@@ -303,7 +323,6 @@ def main():
     print("Starting GRPO training on Red Team Arena...")
     trainer.train()
 
-    # Save LoRA adapters
     model.save_pretrained(args.output_dir + "/final")
     tokenizer.save_pretrained(args.output_dir + "/final")
     print(f"Training complete. LoRA adapters saved to {args.output_dir}/final")
