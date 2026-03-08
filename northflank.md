@@ -80,6 +80,7 @@ curl http://localhost:8001/health
 ```bash
 cd /persist/repo && git pull && \
 cp /persist/repo/training/train.py /app/training/train.py && \
+cp /persist/repo/training/eval_model.py /app/training/eval_model.py && \
 TORCHDYNAMO_DISABLE=1 /persist/trainvenv/bin/python /app/training/train.py \
   --model Qwen/Qwen3-4B \
   --env-url http://localhost:8001 \
@@ -87,6 +88,25 @@ TORCHDYNAMO_DISABLE=1 /persist/trainvenv/bin/python /app/training/train.py \
 ```
 
 > `TORCHDYNAMO_DISABLE=1` is required — the container lacks gcc for Triton JIT compilation.
+
+---
+
+## Run Evaluation (Base vs Fine-Tuned)
+
+```bash
+cd /persist/repo && git pull && \
+cp /persist/repo/training/eval_model.py /app/training/eval_model.py && \
+TORCHDYNAMO_DISABLE=1 /persist/trainvenv/bin/python /app/training/eval_model.py \
+  --model Qwen/Qwen3-4B \
+  --lora-path /persist/output/red_team_arena/final \
+  --episodes 10
+```
+
+Add `--quiet` to suppress per-step output and show summary only. Use `--episodes 5` for a quick check.
+
+Outputs:
+- Per-episode: reward, injection catch rate, false positives, per-step tool calls + reasoning
+- Summary table: base vs fine-tuned side-by-side with delta
 
 ---
 

@@ -363,10 +363,10 @@ def print_comparison(base_results: List[Dict], ft_results: List[Dict]) -> None:
             dc = GREEN if d > 0 else (RED if d < 0 else DIM)
 
         fmt = ".0%" if "Rate" in name else "+.1f" if "Reward" in name else ".0f"
-        print(
-            f"  {name:<20} {b:>12{fmt}} {f:>12{fmt}} "
-            f"{dc}{d:>+10{fmt}}{RESET}"
-        )
+        b_str = format(b, fmt)
+        f_str = format(f, fmt)
+        d_str = format(d, fmt)
+        print(f"  {name:<20} {b_str:>12} {f_str:>12} {dc}{d_str:>10}{RESET}")
 
     print()
 
