@@ -379,6 +379,8 @@ def main():
         report_to="none",
     )
 
+    model.warnings_issued = {"estimate_tokens": True}
+
     trainer = GRPOTrainer(
         model=model,
         processing_class=tokenizer,
